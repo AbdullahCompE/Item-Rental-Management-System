@@ -70,8 +70,6 @@ def parse_address(address: str):
     state = state_zip[0]
     zip = state_zip[1]
 
-    print(street_number, street_name, city, state, zip)
-
     return street_number, street_name, city, state, zip
    
 
@@ -141,7 +139,51 @@ def edit_customer(original_customer_id: str = None, new_customer: Customer = Non
     original_customer_id - A string containing the customer id for the customer to be edited.
     new_customer - A Customer object containing attributes to update. If an attribute is None, it should not be altered.
     """
-    raise NotImplementedError("you must implement this function")
+
+    cur.execute(
+        "SELECT c_current_addr_sk FROM customer WHERE c_customer_id = ?",
+        (original_customer_id,)
+    )
+    row = cur.fetchone()
+    if not row:
+        return False
+
+    address_sk = row[0]
+    updates = []
+    parameters = []
+
+    if new_customer.customer_id is not None:
+        updates.append("c_customer_id = ?")
+        parameters.append(new_customer.customer_id)
+
+    if new_customer.name is not None:
+        name_parts = new_customer.name.strip().split(" ", 1)
+        updates.extend(["c_first_name = ?", "c_last_name = ?"])
+        parameters.append(name_parts[0])
+        parameters.append(name_parts[1] if len(name_parts) > 1 else "")
+
+    if new_customer.email is not None:
+        updates.append("c_email_address = ?")
+        parameters.append(new_customer.email)
+
+    if updates:
+        parameters.append(original_customer_id)
+        sql = f"UPDATE customer SET {', '.join(updates)} WHERE c_customer_id = ?"
+        cur.execute(sql, parameters)
+
+    if new_customer.address is not None and address_sk is not None:
+        street_number, street_name, city, state, zip_code = parse_address(new_customer.address)
+        cur.execute(
+            """
+            UPDATE customer_address
+            SET ca_street_number = ?, ca_street_name = ?,
+                ca_city = ?, ca_state = ?, ca_zip = ?
+            WHERE ca_address_sk = ?
+            """,
+            (street_number, street_name, city, state, zip_code, address_sk)
+        )
+
+    return True
 
 
 def rent_item(item_id: str = None, customer_id: str = None):
